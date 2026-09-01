@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoiceGuard Enterprise - AI Real-Time Voice Deepfake Mitigation</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            900: '#312e81'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0b0f19; color: #f1f5f9; font-family: system-ui, -apple-system, sans-serif; }
+        .glass-card { background: rgba(17, 24, 39, 0.75); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .glass-nav { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(16px); border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+        .pulse-critical { animation: pulse-crit-anim 1.5s infinite; }
+        @keyframes pulse-crit-anim { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 14px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        .pulse-green { animation: pulse-green-anim 2s infinite; }
+        @keyframes pulse-green-anim { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); } 70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+        .tab-btn.active { background-color: rgba(99, 102, 241, 0.2); color: #818cf8; border-color: rgba(99, 102, 241, 0.5); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
+
+    <!-- Top Navigation Header -->
+    <header class="sticky top-0 z-50 glass-nav px-4 py-3">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-indigo-600/30 text-indigo-400 rounded-xl border border-indigo-500/40 shadow-lg shadow-indigo-500/20">
+                    <i class="fa-solid fa-shield-halved text-2xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-xl font-black tracking-wider text-white">VOICE<span class="text-indigo-400">GUARD</span></h1>
+                        <span class="text-[10px] uppercase font-bold tracking-widest bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-500/40">Enterprise v2.0</span>
+                    </div>
+                    <p class="text-xs text-slate-400">Real-Time AI Audio Deepfake & Synthetic Voice Mitigation Platform</p>
+                </div>
+            </div>
+
+            <!-- Operational Navigation Tabs -->
+            <nav class="flex flex-wrap items-center gap-1 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800 text-xs font-semibold">
+                <button onclick="switchTab('soc')" id="tab-soc" class="tab-btn active px-3.5 py-2 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 transition flex items-center gap-2">
+                    <i class="fa-solid fa-gauge-high"></i> <span>Live SOC Monitor</span>
+                </button>
+                <button onclick="switchTab('inspector')" id="tab-inspector" class="tab-btn px-3.5 py-2 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 transition flex items-center gap-2">
+                    <i class="fa-solid fa-file-audio"></i> <span>File Inspector</span>
+                </button>
+                <button onclick="switchTab('audit')" id="tab-audit" class="tab-btn px-3.5 py-2 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 transition flex items-center gap-2">
+                    <i class="fa-solid fa-list-check"></i> <span>Audit Logs</span>
+                </button>
+                <button onclick="switchTab('config')" id="tab-config" class="tab-btn px-3.5 py-2 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 transition flex items-center gap-2">
+                    <i class="fa-solid fa-sliders"></i> <span>Policy Config</span>
+                </button>
+            </nav>
+
+            <!-- System Telemetry Status Pills -->
+            <div class="flex items-center gap-3 text-xs font-mono">
+                <div class="flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">
+                    <span id="statusIndicator" class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                    <span id="statusText" class="text-slate-300">Disconnected</span>
+                </div>
+                <div class="flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">
+                    <i class="fa-solid fa-bolt text-amber-400"></i>
+                    <span class="text-slate-300"><span id="latencyValue">0.0</span> ms</span>
+                    <span id="slaBadge" class="text-[9px] px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">&lt;200ms SLA PASS</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto w-full p-4 md:p-6 flex-grow">
+
+        <!-- ================= TAB 1: LIVE SOC MONITOR (LANDING PAGE) ================= -->
+        <div id="view-soc" class="tab-content space-y-6">
+            <!-- Alert Banner (Hidden by default, shown on critical threat) -->
+            <div id="criticalAlertBanner" class="hidden glass-card border-l-4 border-rose-500 p-4 rounded-xl flex items-center justify-between bg-rose-950/40">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-triangle-exclamation text-2xl text-rose-400 animate-bounce"></i>
+                    <div>
+                        <h4 class="text-sm font-bold text-rose-300 uppercase tracking-wide">CRITICAL AI VOICE CLONING THREAT DETECTED</h4>
+                        <p class="text-xs text-rose-200/80">Synthetic vocoder phase distortion & pitch flatness threshold exceeded! Session intercepted.</p>
+                    </div>
+                </div>
+                <span class="px-3 py-1 bg-rose-600 text-white font-mono text-xs font-bold rounded-lg uppercase">Action: INTERCEPT_BLOCK</span>
+            </div>
+
+            <!-- Top Grid: Risk Gauge, Action Trigger, Signal Metrics -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- EWMA Risk Gauge -->
+                <section class="glass-card rounded-2xl p-6 flex flex-col justify-between border-t-4 border-indigo-500 relative">
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xs font-bold tracking-wider text-slate-300 uppercase flex items-center gap-2">
+                                <i class="fa-solid fa-shield-virus text-indigo-400"></i> Risk Assessment Engine
+                            </h2>
+                            <span id="riskBadge" class="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">LOW RISK</span>
+                        </div>
+                        <div class="my-4 text-center relative">
+                            <div id="riskScoreCircle" class="w-40 h-40 rounded-full mx-auto flex flex-col items-center justify-center border-4 border-emerald-500/30 transition-all duration-300 bg-slate-950/60 shadow-inner">
+                                <span id="riskScoreText" class="text-4xl font-extrabold text-white font-mono">0.0%</span>
+                                <span class="text-[10px] text-slate-400 tracking-widest uppercase mt-1">EWMA Threat Level</span>
+                            </div>
+                        </div>
+                        <div class="bg-slate-900/80 rounded-xl p-4 border border-slate-800">
+                            <div class="text-[11px] text-slate-400 mb-1 font-mono uppercase">Mitigation Action Trigger</div>
+                            <div id="actionText" class="text-base font-bold text-emerald-400 flex items-center gap-2">
+                                <i class="fa-solid fa-circle-check"></i> ALLOW_VOICE_SESSION
+                            </div>
+                            <p id="actionDesc" class="text-xs text-slate-400 mt-1">Biometric vocal parameters within human confidence intervals.</p>
+                            <div class="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-mono">
+                                <span class="text-slate-400">Dominant Threat Signal:</span>
+                                <span id="dominantSignalBadge" class="font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">NONE</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-slate-800">
+                        <div class="flex justify-between text-xs font-mono text-slate-400 mb-1">
+                            <span>Synthetic Probability</span>
+                            <span id="probPercent">0%</span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
+                            <div id="probBar" class="h-full bg-emerald-500 w-0 transition-all duration-300"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Signal Branch Analysis Metrics -->
+                <section class="glass-card rounded-2xl p-6 flex flex-col justify-between border-t-4 border-cyan-500">
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xs font-bold tracking-wider text-slate-300 uppercase flex items-center gap-2">
+                                <i class="fa-solid fa-wave-square text-cyan-400"></i> Signal Branch Metrics
+                            </h2>
+                            <div class="flex items-center gap-1 text-xs font-mono">
+                                <i class="fa-solid fa-microphone text-slate-400" id="vadIcon"></i>
+                                <span id="vadText" class="text-slate-400">SILENCE</span>
+                            </div>
+                        </div>
+                        <div class="space-y-3 font-mono text-xs">
+                            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                                <div class="flex justify-between text-slate-300 mb-1">
+                                    <span>Spectral Flatness (Noise Floor)</span>
+                                    <span id="flatnessVal" class="font-bold text-cyan-400">0.0000</span>
+                                </div>
+                                <div class="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                                    <div id="flatnessBar" class="bg-cyan-500 h-full w-0 transition-all duration-300"></div>
+                                </div>
+                            </div>
+                            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                                <div class="flex justify-between text-slate-300 mb-1">
+                                    <span>Spectral Rolloff (Cutoff Freq)</span>
+                                    <span id="rolloffVal" class="font-bold text-cyan-400">0 Hz</span>
+                                </div>
+                                <div class="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                                    <div id="rolloffBar" class="bg-cyan-500 h-full w-0 transition-all duration-300"></div>
+                                </div>
+                            </div>
+                            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                                <div class="flex justify-between text-slate-300 mb-1">
+                                    <span>Phase Discontinuity Variance</span>
+                                    <span id="phaseVal" class="font-bold text-cyan-400">0.0000</span>
+                                </div>
+                                <div class="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                                    <div id="phaseBar" class="bg-cyan-500 h-full w-0 transition-all duration-300"></div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 pt-1">
+                                <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                                    <div class="text-[10px] text-slate-400 mb-0.5">Pitch F0 Mean</div>
+                                    <div id="f0Val" class="font-bold text-indigo-400 text-sm">0.0 Hz</div>
+                                </div>
+                                <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                                    <div class="text-[10px] text-slate-400 mb-0.5">Pitch STD Variance</div>
+                                    <div id="f0StdVal" class="font-bold text-indigo-400 text-sm">0.0 Hz</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Temporal EWMA Risk Chart -->
+                <section class="glass-card rounded-2xl p-6 flex flex-col justify-between border-t-4 border-purple-500">
+                    <div>
+                        <h2 class="text-xs font-bold tracking-wider text-slate-300 uppercase mb-4 flex items-center gap-2">
+                            <i class="fa-solid fa-chart-line text-purple-400"></i> Temporal Risk Trend Stream
+                        </h2>
+                        <div class="w-full h-48 relative">
+                            <canvas id="riskChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-[11px] text-slate-400 font-mono">
+                        <span>Window: 2.0s Sliding</span>
+                        <span>Update: Realtime WS</span>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Middle Section: Web Audio Realtime Visualizer + Live Mic Controls & THREAT SIMULATOR -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Audio Waveform Oscilloscope & Frequency Spectrum -->
+                <div class="lg:col-span-2 glass-card rounded-2xl p-6">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-xs font-bold tracking-wider text-slate-300 uppercase flex items-center gap-2">
+                            <i class="fa-solid fa-compact-disc text-indigo-400"></i> Real-Time Web Audio Oscilloscope & Frequency Spectrum
+                        </h3>
+                        <span class="text-[10px] font-mono bg-indigo-950/60 text-indigo-400 px-2 py-0.5 rounded border border-indigo-800">16 kHz PCM Ingestion</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <div class="text-[11px] font-mono text-slate-400 mb-1">Time Domain Waveform (Oscilloscope)</div>
+                            <canvas id="waveformCanvas" class="w-full h-36 bg-slate-950 rounded-xl border border-slate-800"></canvas>
+                        </div>
+                        <div>
+                            <div class="text-[11px] font-mono text-slate-400 mb-1">Frequency Spectrum (FFT Analysis)</div>
+                            <canvas id="spectrumCanvas" class="w-full h-36 bg-slate-950 rounded-xl border border-slate-800"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Combined Audio Controls & THREAT STREAM SIMULATOR (ON LANDING PAGE) -->
+                <div class="glass-card rounded-2xl p-6 flex flex-col justify-between space-y-4">
+                    <div>
+                        <h3 class="text-xs font-bold tracking-wider text-slate-300 uppercase mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-indigo-400"></i> Audio Controls & Threat Simulator
+                        </h3>
+                        <div class="space-y-2.5">
+                            <button id="micBtn" onclick="toggleMicrophone()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 text-xs">
+                                <i class="fa-solid fa-microphone"></i> Start Microphone Stream
+                            </button>
+                            <div class="grid grid-cols-2 gap-2 pt-1">
+                                <button id="simHumanBtn" onclick="toggleSimulation('human')" class="bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 font-semibold py-2.5 px-2 rounded-xl transition flex items-center justify-center gap-1.5 text-xs">
+                                    <i class="fa-solid fa-user"></i> Simulate Human
+                                </button>
+                                <button id="simDeepfakeBtn" onclick="toggleSimulation('deepfake')" class="bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-700/60 font-semibold py-2.5 px-2 rounded-xl transition flex items-center justify-center gap-1.5 text-xs">
+                                    <i class="fa-solid fa-robot"></i> Simulate Deepfake
+                                </button>
+                            </div>
+                            <button onclick="resetSystem()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium py-2 px-3 rounded-xl transition flex items-center justify-center gap-2 border border-slate-700 text-xs">
+                                <i class="fa-solid fa-rotate-left"></i> Reset Engine State
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-3 bg-slate-900/60 rounded-xl border border-slate-800 text-[11px] font-mono text-slate-400">
+                        <div class="flex items-center gap-1.5 text-indigo-300 font-bold mb-1">
+                            <i class="fa-solid fa-flask"></i> Threat Simulator Instructions
+                        </div>
+                        Click <strong>Simulate Deepfake</strong> to inject synthetic vocoder audio & watch EWMA risk escalate to <b>SUSPICIOUS / CRITICAL</b> in real time!
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB 2: AUDIO FILE INSPECTOR ================= -->
+        <div id="view-inspector" class="tab-content hidden space-y-6">
+            <div class="glass-card rounded-2xl p-6">
+                <h2 class="text-sm font-bold tracking-wider text-slate-200 uppercase mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-file-waveform text-indigo-400 text-lg"></i> Offline Voice File Deepfake Inspector
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="md:col-span-1 space-y-4">
+                        <input type="file" id="audioFileInput" accept=".wav,.mp3,.ogg,.flac,.m4a" class="hidden" onchange="handleFileSelect(event)">
+                        <div id="dropZone" onclick="openFilePicker()" class="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-2xl p-6 text-center cursor-pointer transition bg-slate-950/50 flex flex-col items-center justify-center min-h-[160px]">
+                            <i class="fa-solid fa-cloud-arrow-up text-3xl text-indigo-400 mb-2"></i>
+                            <p class="text-xs text-slate-200 font-medium" id="fileNameDisplay">Drop audio file or click to browse</p>
+                            <p class="text-[10px] text-slate-400 mt-1">Supports .wav, .mp3, .flac, .ogg, .m4a</p>
+                        </div>
+                        <button id="uploadBtn" onclick="uploadAndAnalyze()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 text-xs">
+                            <i class="fa-solid fa-magnifying-glass"></i> Analyze Voice File
+                        </button>
+                    </div>
+                    <div class="md:col-span-2 bg-slate-950/60 rounded-2xl p-5 border border-slate-800 flex flex-col justify-between">
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">Inspection Analysis Summary</h3>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+                                <div class="bg-slate-900 p-3 rounded-xl border border-slate-800">
+                                    <div class="text-[10px] text-slate-400">File Name</div>
+                                    <div id="inspFileName" class="font-bold text-white truncate text-xs mt-1">-</div>
+                                </div>
+                                <div class="bg-slate-900 p-3 rounded-xl border border-slate-800">
+                                    <div class="text-[10px] text-slate-400">Peak Threat Score</div>
+                                    <div id="inspPeakScore" class="font-bold text-rose-400 text-xs mt-1">0.0%</div>
+                                </div>
+                                <div class="bg-slate-900 p-3 rounded-xl border border-slate-800">
+                                    <div class="text-[10px] text-slate-400">Average Speech Risk</div>
+                                    <div id="inspAvgScore" class="font-bold text-amber-400 text-xs mt-1">0.0%</div>
+                                </div>
+                                <div class="bg-slate-900 p-3 rounded-xl border border-slate-800">
+                                    <div class="text-[10px] text-slate-400">Overall Action</div>
+                                    <div id="inspAction" class="font-bold text-emerald-400 text-xs mt-1">ALLOW</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-3 border-t border-slate-800 text-xs text-slate-400">
+                            <b>EWMA Peak Threat Analysis</b>: Evaluates highest EWMA threat level reached during active speech segments, ensuring deepfake segments are caught even if followed by silence.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Frame Breakdown Timeline -->
+            <div class="glass-card rounded-2xl p-6">
+                <h3 class="text-xs font-bold tracking-wider text-slate-300 uppercase mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-timeline text-purple-400"></i> Frame Breakdown Timeline Analysis
+                </h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs font-mono">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400 bg-slate-900/80">
+                                <th class="p-3">Time (sec)</th>
+                                <th class="p-3">Voice Activity</th>
+                                <th class="p-3">Raw Frame Score</th>
+                                <th class="p-3">EWMA Risk Score</th>
+                                <th class="p-3">Spectral Flatness</th>
+                                <th class="p-3">Spectral Rolloff</th>
+                                <th class="p-3">Phase Var</th>
+                                <th class="p-3">Threat Level</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fileTimelineBody" class="divide-y divide-slate-800/60">
+                            <tr>
+                                <td colspan="8" class="p-4 text-center text-slate-500 italic">No audio file analyzed yet. Select a file above and click Analyze.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB 3: AUDIT LOGS & TELEMETRY ================= -->
+        <div id="view-audit" class="tab-content hidden space-y-6">
+            <div class="glass-card rounded-2xl p-6">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                    <h2 class="text-sm font-bold tracking-wider text-slate-200 uppercase flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-emerald-400 text-lg"></i> Security Incident Audit & Telemetry Center
+                    </h2>
+                    <div class="flex items-center gap-2">
+                        <button onclick="fetchAuditLogs()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-mono flex items-center gap-1 border border-slate-700">
+                            <i class="fa-solid fa-rotate"></i> Refresh
+                        </button>
+                        <button onclick="exportLogsCSV()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-mono font-semibold flex items-center gap-1 shadow-lg shadow-indigo-600/30">
+                            <i class="fa-solid fa-download"></i> Export CSV Log
+                        </button>
+                        <button onclick="clearAuditLogsServer()" class="px-3 py-1.5 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800 rounded-lg text-xs font-mono">
+                            Clear
+                        </button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto rounded-xl border border-slate-800">
+                    <table class="w-full text-left border-collapse text-xs font-mono">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400 bg-slate-900">
+                                <th class="p-3">Timestamp</th>
+                                <th class="p-3">Event Type</th>
+                                <th class="p-3">Current Score</th>
+                                <th class="p-3">Peak EWMA</th>
+                                <th class="p-3">Threat Level</th>
+                                <th class="p-3">Action Triggered</th>
+                                <th class="p-3">Dominant Signal</th>
+                                <th class="p-3">Latency</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditLogTableBody" class="divide-y divide-slate-800 bg-slate-950/60">
+                            <tr>
+                                <td colspan="8" class="p-4 text-center text-slate-500 italic">No telemetry logs recorded yet. Start live mic or simulator to see real-time audit stream.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB 4: POLICY & CONFIGURATOR ================= -->
+        <div id="view-config" class="tab-content hidden space-y-6">
+            <div class="glass-card rounded-2xl p-6">
+                <h2 class="text-sm font-bold tracking-wider text-slate-200 uppercase mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-indigo-400 text-lg"></i> Engine Policy & Risk Threshold Configurator
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-4 bg-slate-950/60 p-5 rounded-2xl border border-slate-800">
+                        <h3 class="text-xs font-bold text-slate-300 uppercase">EWMA Temporal Smoothing Alpha (\(\alpha\))</h3>
+                        <p class="text-xs text-slate-400">Controls historical memory retention rate across sliding audio frames.</p>
+                        <div class="flex items-center gap-4">
+                            <input type="range" id="cfgAlpha" min="0.05" max="0.90" step="0.05" value="0.35" onchange="updatePolicyConfig()" class="w-full accent-indigo-500">
+                            <span id="cfgAlphaVal" class="font-mono font-bold text-indigo-400 text-sm">0.35</span>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4 bg-slate-950/60 p-5 rounded-2xl border border-slate-800">
+                        <h3 class="text-xs font-bold text-slate-300 uppercase">Mitigation Action Thresholds</h3>
+                        <div class="space-y-3 font-mono text-xs">
+                            <div>
+                                <div class="flex justify-between text-slate-400 mb-1">
+                                    <span>Low Risk Ceiling (&lt;)</span>
+                                    <span id="cfgLowVal">30.0%</span>
+                                </div>
+                                <input type="range" id="cfgLow" min="10" max="50" step="5" value="30" onchange="updatePolicyConfig()" class="w-full accent-emerald-500">
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-slate-400 mb-1">
+                                    <span>Mid Risk (Trigger MFA) (&lt;)</span>
+                                    <span id="cfgMidVal">65.0%</span>
+                                </div>
+                                <input type="range" id="cfgMid" min="40" max="80" step="5" value="65" onchange="updatePolicyConfig()" class="w-full accent-amber-500">
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-slate-400 mb-1">
+                                    <span>High Risk (Intercept Block) (&ge;)</span>
+                                    <span id="cfgHighVal">85.0%</span>
+                                </div>
+                                <input type="range" id="cfgHigh" min="70" max="95" step="5" value="85" onchange="updatePolicyConfig()" class="w-full accent-rose-500">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="glass-nav px-4 py-3 text-center text-xs text-slate-500 font-mono">
+        VoiceGuard Security Engine &bull; SIH 2026 Enterprise Edition &bull; Sub-200ms Audio Deepfake Mitigation
+    </footer>
+
+    <!-- Main Web Application Script -->
+    <script>
+        let socket = null, audioContext = null, mediaStream = null, scriptProcessor = null, analyserNode = null;
+        let isMicActive = false, simInterval = null, selectedFile = null, activeSimType = null;
+        let auditLogsLocal = [];
+
+        // Tab Navigation Switcher
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('view-' + tabId).classList.remove('hidden');
+            document.getElementById('tab-' + tabId).classList.add('active');
+            if (tabId === 'audit') fetchAuditLogs();
+        }
+
+        // Initialize Chart.js Temporal Stream
+        const ctx = document.getElementById('riskChart').getContext('2d');
+        const maxDataPoints = 30;
+        const chartLabels = Array(maxDataPoints).fill('');
+        const chartData = Array(maxDataPoints).fill(0);
+        const riskChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: 'EWMA Risk %',
+                    data: chartData,
+                    borderColor: '#818cf8',
+                    backgroundColor: 'rgba(129, 140, 248, 0.12)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { min: 0, max: 100, grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+                    x: { grid: { display: false } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // WebSocket Management
+        let _wsRetryCount = 0;
+        const _WS_BACKEND = (window.location.protocol === 'file:' || !window.location.host)
+            ? 'ws://127.0.0.1:8000'
+            : ((window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host);
+        const _API_BASE = (window.location.protocol === 'file:' || !window.location.host)
+            ? 'http://127.0.0.1:8000'
+            : '';
+
+        function initWebSocket() {
+            const wsUrl = _WS_BACKEND + '/ws/stream';
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                _wsRetryCount = 0;
+                document.getElementById('statusIndicator').className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-green';
+                document.getElementById('statusText').innerText = 'Connected';
+            };
+
+            socket.onclose = () => {
+                document.getElementById('statusIndicator').className = 'w-2.5 h-2.5 rounded-full bg-red-500';
+                document.getElementById('statusText').innerText = 'Disconnected';
+                // Exponential back-off: 3s, 6s, 12s ... capped at 30s
+                _wsRetryCount = Math.min(_wsRetryCount + 1, 4);
+                setTimeout(initWebSocket, Math.min(3000 * _wsRetryCount, 30000));
+            };
+
+            socket.onerror = () => { console.error('WebSocket connection error — backend may be offline'); };
+
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    updateUI(data);
+                } catch (e) { console.error(e); }
+            };
+        }
+
+        // UI Telemetry Updater
+        function updateUI(data) {
+            if (!data) return;
+
+            // Latency SLA Check
+            if (data.latency_ms !== undefined) {
+                document.getElementById('latencyValue').innerText = data.latency_ms.toFixed(1);
+                const slaBadge = document.getElementById('slaBadge');
+                if (data.latency_ms < 200.0) {
+                    slaBadge.className = 'text-[9px] px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                    slaBadge.innerText = '<200ms SLA PASS';
+                } else {
+                    slaBadge.className = 'text-[9px] px-1.5 py-0.5 rounded font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+                    slaBadge.innerText = '>200ms LATENCY LAG';
+                }
+            }
+
+            // Voice Activity Detection (VAD) Indicator
+            const vadIcon = document.getElementById('vadIcon'), vadText = document.getElementById('vadText');
+            const isSpeech = data.vad && data.vad.is_speech;
+            if (isSpeech) {
+                vadIcon.className = 'fa-solid fa-microphone text-emerald-400 animate-pulse';
+                vadText.className = 'text-emerald-400 font-bold';
+                vadText.innerText = 'SPEECH DETECTED';
+            } else {
+                vadIcon.className = 'fa-solid fa-microphone text-slate-400';
+                vadText.className = 'text-slate-400';
+                vadText.innerText = 'SILENCE';
+            }
+
+            // Signal Metrics Update
+            if (data.detection) {
+                const acoustic = data.detection.acoustic || {};
+                const prosodic = data.detection.prosodic || {};
+
+                const flatness = isSpeech ? (acoustic.spectral_flatness || 0) : 0;
+                document.getElementById('flatnessVal').innerText = flatness.toFixed(4);
+                document.getElementById('flatnessBar').style.width = Math.min(100, flatness * 1000) + '%';
+
+                const rolloff = isSpeech ? (acoustic.spectral_rolloff_hz || 0) : 0;
+                document.getElementById('rolloffVal').innerText = Math.round(rolloff) + ' Hz';
+                document.getElementById('rolloffBar').style.width = Math.min(100, (rolloff / 8000) * 100) + '%';
+
+                const phase = isSpeech ? (acoustic.phase_discontinuity_var || 0) : 0;
+                document.getElementById('phaseVal').innerText = phase.toFixed(4);
+                document.getElementById('phaseBar').style.width = Math.min(100, (phase / 2.8) * 100) + '%';
+
+                document.getElementById('f0Val').innerText = (isSpeech ? (prosodic.f0_mean_hz || 0) : 0).toFixed(1) + ' Hz';
+                document.getElementById('f0StdVal').innerText = (isSpeech ? (prosodic.f0_std_hz || 0) : 0).toFixed(1) + ' Hz';
+            }
+
+            // Risk Assessment & Mitigation Trigger Update
+            if (data.risk) {
+                const score = data.risk.dynamic_risk_score !== undefined ? data.risk.dynamic_risk_score : 0;
+                const level = data.risk.risk_level || 'LOW';
+                const action = data.risk.action_trigger || 'ALLOW';
+
+                document.getElementById('riskScoreText').innerText = score.toFixed(1) + '%';
+                document.getElementById('probPercent').innerText = score.toFixed(0) + '%';
+                document.getElementById('probBar').style.width = score + '%';
+
+                chartData.shift();
+                chartData.push(score);
+                riskChart.update();
+
+                const circle = document.getElementById('riskScoreCircle');
+                const badge = document.getElementById('riskBadge');
+                const actionText = document.getElementById('actionText');
+                const actionDesc = document.getElementById('actionDesc');
+                const probBar = document.getElementById('probBar');
+                const alertBanner = document.getElementById('criticalAlertBanner');
+
+                if (score >= 85 || level === 'CRITICAL') {
+                    circle.className = 'w-40 h-40 rounded-full mx-auto flex flex-col items-center justify-center border-4 border-rose-500 bg-rose-950/40 pulse-critical';
+                    badge.className = 'text-xs font-bold px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30';
+                    badge.innerText = 'CRITICAL DEEPFAKE THREAT';
+                    actionText.className = 'text-base font-bold text-rose-400 flex items-center gap-2';
+                    actionText.innerHTML = '<i class="fa-solid fa-hand-stop"></i> ' + action;
+                    actionDesc.innerText = 'Synthetic pitch flatness & phase distortion detected! Session blocked.';
+                    probBar.className = 'h-full bg-rose-500 transition-all duration-300';
+                    alertBanner.classList.remove('hidden');
+                } else if (score >= 65 || level === 'SUSPICIOUS') {
+                    circle.className = 'w-40 h-40 rounded-full mx-auto flex flex-col items-center justify-center border-4 border-orange-500 bg-orange-950/30';
+                    badge.className = 'text-xs font-bold px-2.5 py-1 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30';
+                    badge.innerText = 'SUSPICIOUS METRICS';
+                    actionText.className = 'text-base font-bold text-orange-400 flex items-center gap-2';
+                    actionText.innerHTML = '<i class="fa-solid fa-shield-virus"></i> ' + action;
+                    actionDesc.innerText = 'Elevated acoustic variance. Secondary biometric MFA challenge issued.';
+                    probBar.className = 'h-full bg-orange-500 transition-all duration-300';
+                    alertBanner.classList.add('hidden');
+                } else if (score >= 30 || level === 'ELEVATED') {
+                    circle.className = 'w-40 h-40 rounded-full mx-auto flex flex-col items-center justify-center border-4 border-amber-500 bg-amber-950/30';
+                    badge.className = 'text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30';
+                    badge.innerText = 'ELEVATED MONITORING';
+                    actionText.className = 'text-base font-bold text-amber-400 flex items-center gap-2';
+                    actionText.innerHTML = '<i class="fa-solid fa-eye"></i> ' + action;
+                    actionDesc.innerText = 'Elevated voice activity parameters. Continuous monitoring enabled.';
+                    probBar.className = 'h-full bg-amber-500 transition-all duration-300';
+                    alertBanner.classList.add('hidden');
+                } else {
+                    circle.className = 'w-40 h-40 rounded-full mx-auto flex flex-col items-center justify-center border-4 border-emerald-500/30 bg-slate-950/60';
+                    badge.className = 'text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                    badge.innerText = 'LOW RISK';
+                    actionText.className = 'text-base font-bold text-emerald-400 flex items-center gap-2';
+                    actionText.innerHTML = '<i class="fa-solid fa-circle-check"></i> ' + action;
+                    actionDesc.innerText = 'Biometric vocal parameters within human confidence intervals.';
+                    probBar.className = 'h-full bg-emerald-500 transition-all duration-300';
+                    alertBanner.classList.add('hidden');
+                }
+
+                // Append real-time stream log to Audit table if speech is active
+                if (isSpeech) {
+                    const dominantSig = (data.detection && data.detection.contributing_factors) ? data.detection.contributing_factors.dominant_signal : 'none';
+                    const domBadge = document.getElementById('dominantSignalBadge');
+                    if (domBadge) {
+                        domBadge.innerText = dominantSig;
+                        if (dominantSig !== 'none') {
+                            domBadge.className = 'font-bold px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-700/60';
+                        } else {
+                            domBadge.className = 'font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700';
+                        }
+                    }
+                    appendLiveAuditEntry({
+                        timestamp: data.timestamp || Date.now() / 1000,
+                        event: score >= 65 ? 'THREAT_ALERT' : 'VOICE_STREAM',
+                        risk_score: score,
+                        peak_score: data.risk.peak_risk_score || score,
+                        risk_level: level,
+                        action: action,
+                        dominant_signal: dominantSig,
+                        latency_ms: data.latency_ms
+                    });
+                }
+            }
+        }
+
+        function appendLiveAuditEntry(log) {
+            auditLogsLocal.push(log);
+            if (auditLogsLocal.length > 300) auditLogsLocal.shift();
+            const tbody = document.getElementById('auditLogTableBody');
+            if (tbody.children.length === 1 && tbody.children[0].innerText.includes('No telemetry logs')) {
+                tbody.innerHTML = '';
+            }
+            const tr = document.createElement('tr');
+            const timeStr = new Date(log.timestamp * 1000).toLocaleTimeString();
+            let colorClass = 'text-emerald-400';
+            if (log.risk_level === 'CRITICAL') colorClass = 'text-rose-400 font-bold';
+            if (log.risk_level === 'SUSPICIOUS') colorClass = 'text-orange-400 font-bold';
+            if (log.risk_level === 'ELEVATED') colorClass = 'text-amber-400';
+
+            tr.className = 'hover:bg-slate-900 transition';
+            tr.innerHTML = `
+                <td class="p-3 font-mono text-slate-400">${timeStr}</td>
+                <td class="p-3 font-mono font-semibold text-indigo-300">${log.event}</td>
+                <td class="p-3 font-mono font-bold ${colorClass}">${(log.risk_score || 0).toFixed(1)}%</td>
+                <td class="p-3 font-mono font-bold text-slate-200">${(log.peak_score || 0).toFixed(1)}%</td>
+                <td class="p-3 font-mono ${colorClass}">${log.risk_level}</td>
+                <td class="p-3 font-mono text-slate-300">${log.action}</td>
+                <td class="p-3 font-mono text-amber-300">${log.dominant_signal || '-'}</td>
+                <td class="p-3 font-mono text-emerald-400">${log.latency_ms ? log.latency_ms.toFixed(1) + ' ms' : '-'}</td>
+            `;
+            tbody.insertBefore(tr, tbody.firstChild);
+            if (tbody.children.length > 100) tbody.removeChild(tbody.lastChild);
+        }
+
+        // Live Microphone Stream & Web Audio Visualizer
+        async function toggleMicrophone() {
+            if (isMicActive) {
+                stopMicrophone();
+            } else {
+                stopSimulation();
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                    mediaStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                            sampleRate: 16000,
+                            channelCount: 1
+                        }
+                    });
+                    const source = audioContext.createMediaStreamSource(mediaStream);
+                    
+                    analyserNode = audioContext.createAnalyser();
+                    analyserNode.fftSize = 512;
+                    source.connect(analyserNode);
+
+                    scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
+                    source.connect(scriptProcessor);
+                    scriptProcessor.connect(audioContext.destination);
+
+                    scriptProcessor.onaudioprocess = (e) => {
+                        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+                        const inputData = e.inputBuffer.getChannelData(0);
+                        socket.send(JSON.stringify({ audio_samples: Array.from(inputData) }));
+                    };
+
+                    isMicActive = true;
+                    document.getElementById('micBtn').className = 'w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-rose-600/30 text-xs';
+                    document.getElementById('micBtn').innerHTML = '<i class="fa-solid fa-stop"></i> Stop Microphone Stream';
+                    
+                    drawAudioVisualizers();
+                } catch (err) { alert('Microphone access denied: ' + err.message); }
+            }
+        }
+
+        // ── Zero out all dashboard metrics to baseline ─────────────────────
+        function flushUI() {
+            document.getElementById('riskScoreText').innerText = '0.0%';
+            document.getElementById('probPercent').innerText = '0%';
+            document.getElementById('probBar').style.width = '0%';
+            chartData.fill(0); riskChart.update();
+            document.getElementById('riskScoreCircle').className = 'w-40 h-40 rounded-full mx-auto flex flex-col items-center justify-center border-4 border-emerald-500/30 bg-slate-950/60';
+            document.getElementById('riskBadge').className = 'text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+            document.getElementById('riskBadge').innerText = 'LOW RISK';
+            document.getElementById('actionText').className = 'text-base font-bold text-emerald-400 flex items-center gap-2';
+            document.getElementById('actionText').innerHTML = '<i class="fa-solid fa-circle-check"></i> ALLOW';
+            document.getElementById('actionDesc').innerText = 'Biometric vocal parameters within human confidence intervals.';
+            document.getElementById('probBar').className = 'h-full bg-emerald-500 transition-all duration-300';
+            const alertBanner = document.getElementById('criticalAlertBanner');
+            if (alertBanner) alertBanner.classList.add('hidden');
+            ['flatnessVal','phaseVal'].forEach(id => document.getElementById(id).innerText = '0.0000');
+            document.getElementById('rolloffVal').innerText = '0 Hz';
+            document.getElementById('f0Val').innerText = '0.0 Hz';
+            document.getElementById('f0StdVal').innerText = '0.0 Hz';
+            ['flatnessBar','rolloffBar','phaseBar'].forEach(id => document.getElementById(id).style.width = '0%');
+            document.getElementById('vadIcon').className = 'fa-solid fa-microphone text-slate-400';
+            document.getElementById('vadText').className = 'text-slate-400';
+            document.getElementById('vadText').innerText = 'SILENCE';
+            document.getElementById('latencyValue').innerText = '0';
+        }
+
+        function stopMicrophone() {
+            if (scriptProcessor) { scriptProcessor.disconnect(); scriptProcessor = null; }
+            if (mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
+            if (audioContext) { audioContext.close(); audioContext = null; }
+            isMicActive = false;
+            document.getElementById('micBtn').className = 'w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 text-xs';
+            document.getElementById('micBtn').innerHTML = '<i class="fa-solid fa-microphone"></i> Start Microphone Stream';
+            flushUI();
+        }
+
+        // Web Audio Canvas Visualizers (Waveform & Spectrum)
+        function drawAudioVisualizers() {
+            if (!isMicActive || !analyserNode) return;
+
+            const waveformCanvas = document.getElementById('waveformCanvas');
+            const waveCtx = waveformCanvas.getContext('2d');
+            const spectrumCanvas = document.getElementById('spectrumCanvas');
+            const specCtx = spectrumCanvas.getContext('2d');
+
+            const bufferLength = analyserNode.fftSize;
+            const timeData = new Uint8Array(bufferLength);
+            const freqData = new Uint8Array(bufferLength);
+
+            function render() {
+                if (!isMicActive) return;
+                requestAnimationFrame(render);
+
+                // Draw Waveform
+                analyserNode.getByteTimeDomainData(timeData);
+                waveCtx.fillStyle = '#020617';
+                waveCtx.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
+                waveCtx.lineWidth = 2;
+                waveCtx.strokeStyle = '#6366f1';
+                waveCtx.beginPath();
+
+                const sliceWidth = waveformCanvas.width * 1.0 / bufferLength;
+                let x = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    const v = timeData[i] / 128.0;
+                    const y = v * waveformCanvas.height / 2;
+                    if (i === 0) waveCtx.moveTo(x, y);
+                    else waveCtx.lineTo(x, y);
+                    x += sliceWidth;
+                }
+                waveCtx.lineTo(waveformCanvas.width, waveformCanvas.height / 2);
+                waveCtx.stroke();
+
+                // Draw Spectrum
+                analyserNode.getByteFrequencyData(freqData);
+                specCtx.fillStyle = '#020617';
+                specCtx.fillRect(0, 0, spectrumCanvas.width, spectrumCanvas.height);
+                const barWidth = (spectrumCanvas.width / bufferLength) * 2.5;
+                let barX = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    const barHeight = (freqData[i] / 255) * spectrumCanvas.height;
+                    specCtx.fillStyle = `rgb(99, 102, ${freqData[i] + 100})`;
+                    specCtx.fillRect(barX, spectrumCanvas.height - barHeight, barWidth, barHeight);
+                    barX += barWidth + 1;
+                }
+            }
+            render();
+        }
+
+        // Simulation Stream Controls (Directly on Landing Page)
+        function toggleSimulation(type) {
+            if (simInterval && activeSimType === type) { stopSimulation(); return; }
+            stopMicrophone();
+            stopSimulation();
+            activeSimType = type;
+
+            if (type === 'human') {
+                document.getElementById('simHumanBtn').innerHTML = '<i class="fa-solid fa-square"></i> Stop Human';
+                document.getElementById('simHumanBtn').className = 'bg-emerald-600 text-white font-semibold py-2.5 px-2 rounded-xl transition flex items-center justify-center gap-1 text-xs';
+            } else {
+                document.getElementById('simDeepfakeBtn').innerHTML = '<i class="fa-solid fa-square"></i> Stop Deepfake';
+                document.getElementById('simDeepfakeBtn').className = 'bg-rose-600 text-white font-semibold py-2.5 px-2 rounded-xl transition flex items-center justify-center gap-1 text-xs';
+            }
+
+            simInterval = setInterval(() => {
+                if (!socket || socket.readyState !== WebSocket.OPEN) return;
+                const bufferSize = 800;
+                let samples = new Float32Array(bufferSize);
+                for (let i = 0; i < bufferSize; i++) {
+                    if (type === 'human') {
+                        // Realistic human voice: F0 vibrato 120-180 Hz (std ~18 Hz),
+                        // multi-harmonic partials, natural jitter noise, RMS > 0.025
+                        const t = i / 16000;
+                        const f0 = 150 + 30 * Math.sin(2 * Math.PI * 4.5 * t) + 8 * Math.sin(2 * Math.PI * 11 * t);
+                        const phase = 2 * Math.PI * f0 * t;
+                        samples[i] = 0.38 * Math.sin(phase)
+                                   + 0.18 * Math.sin(2 * phase + 0.3)
+                                   + 0.10 * Math.sin(3 * phase + 0.7)
+                                   + 0.06 * Math.sin(4 * phase + 1.1)
+                                   + 0.04 * Math.sin(5 * phase + 0.5)
+                                   + (Math.random() - 0.5) * 0.06;  // natural breath noise
+                    } else {
+                        // Synthetic deepfake: flat monotone F0, square-wave vocoder artifact
+                        const t = i / 16000;
+                        samples[i] = 0.75 * Math.sign(Math.sin(2 * Math.PI * 150 * t))
+                                   + 0.22 * Math.sin(2 * Math.PI * 3800 * t)
+                                   + 0.05 * Math.sin(2 * Math.PI * 7200 * t);
+                    }
+                }
+                socket.send(JSON.stringify({ audio_samples: Array.from(samples) }));
+            }, 50);
+        }
+
+        function stopSimulation() {
+            if (simInterval) { clearInterval(simInterval); simInterval = null; activeSimType = null; }
+            document.getElementById('simHumanBtn').innerHTML = '<i class="fa-solid fa-user"></i> Simulate Human';
+            document.getElementById('simHumanBtn').className = 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 font-semibold py-2.5 px-2 rounded-xl transition flex items-center justify-center gap-1.5 text-xs';
+            document.getElementById('simDeepfakeBtn').innerHTML = '<i class="fa-solid fa-robot"></i> Simulate Deepfake';
+            document.getElementById('simDeepfakeBtn').className = 'bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-700/60 font-semibold py-2.5 px-2 rounded-xl transition flex items-center justify-center gap-1.5 text-xs';
+            flushUI();
+        }
+
+        function resetSystem() {
+            stopMicrophone();
+            stopSimulation();
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ action: 'reset' }));
+            }
+            flushUI();
+        }
+
+        // File Inspector
+        function openFilePicker() { document.getElementById('audioFileInput').click(); }
+        function handleFileSelect(e) {
+            if (e.target.files.length > 0) {
+                selectedFile = e.target.files[0];
+                document.getElementById('fileNameDisplay').innerText = 'Selected: ' + selectedFile.name + ' (' + (selectedFile.size / 1024 / 1024).toFixed(2) + ' MB)';
+            }
+        }
+
+        async function uploadAndAnalyze() {
+            if (!selectedFile) { alert('Please select an audio file first!'); return; }
+            stopMicrophone();
+            stopSimulation();
+            const uploadBtn = document.getElementById('uploadBtn');
+            uploadBtn.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Analyzing Audio Signals...';
+            uploadBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                const response = await fetch(_API_BASE + '/api/analyze-file', { method: 'POST', body: formData });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.detail || 'Analysis failed');
+
+                document.getElementById('inspFileName').innerText = result.filename;
+                document.getElementById('inspPeakScore').innerText = (result.peak_risk_score || result.overall_risk_score) + '%';
+                document.getElementById('inspAvgScore').innerText = (result.avg_speech_risk || 0) + '%';
+                document.getElementById('inspAction').innerText = result.overall_action;
+
+                const tbody = document.getElementById('fileTimelineBody');
+                tbody.innerHTML = '';
+                const timeline = result.timeline || [];
+
+                timeline.forEach((frame, idx) => {
+                    const tr = document.createElement('tr');
+                    tr.className = idx % 2 === 0 ? 'bg-slate-950/40 hover:bg-slate-900' : 'bg-slate-900/30 hover:bg-slate-900';
+                    const ac = frame.detection.acoustic || {};
+                    const pr = frame.detection.prosodic || {};
+                    const rk = frame.risk || {};
+                    tr.innerHTML = `
+                        <td class="p-3 font-mono">${frame.time_sec}s</td>
+                        <td class="p-3 font-mono">${frame.is_speech ? '<span class="text-emerald-400">SPEECH</span>' : '<span class="text-slate-500">SILENCE</span>'}</td>
+                        <td class="p-3 font-mono text-indigo-300 font-bold">${(frame.detection.raw_frame_score || 0).toFixed(1)}%</td>
+                        <td class="p-3 font-mono font-bold" style="color:${rk.status_color}">${(rk.dynamic_risk_score || 0).toFixed(1)}%</td>
+                        <td class="p-3 font-mono">${(ac.spectral_flatness || 0).toFixed(4)}</td>
+                        <td class="p-3 font-mono">${Math.round(ac.spectral_rolloff_hz || 0)} Hz</td>
+                        <td class="p-3 font-mono">${(ac.phase_discontinuity_var || 0).toFixed(4)}</td>
+                        <td class="p-3 font-mono font-bold" style="color:${rk.status_color}">${rk.risk_level || 'LOW'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) { alert('File Analysis Error: ' + err.message); }
+            finally {
+                uploadBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Analyze Voice File';
+                uploadBtn.disabled = false;
+            }
+        }
+
+        // Audit Logs & Export
+        async function fetchAuditLogs() {
+            try {
+                const res = await fetch('/api/logs');
+                const data = await res.json();
+                const logs = data.logs || [];
+                if (logs.length > 0) {
+                    const tbody = document.getElementById('auditLogTableBody');
+                    tbody.innerHTML = '';
+                    logs.slice().reverse().forEach(log => {
+                        appendLiveAuditEntry(log);
+                    });
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function clearAuditLogsServer() {
+            await fetch('/api/logs/clear', { method: 'POST' });
+            auditLogsLocal = [];
+            document.getElementById('auditLogTableBody').innerHTML = '<tr><td colspan="8" class="p-4 text-center text-slate-500 italic">No telemetry logs recorded yet.</td></tr>';
+        }
+
+        function exportLogsCSV() {
+            if (auditLogsLocal.length === 0) { alert('No logs available to export!'); return; }
+            let csv = 'Timestamp,Event,RiskScore,PeakScore,RiskLevel,Action,LatencyMs\n';
+            auditLogsLocal.forEach(l => {
+                csv += `${l.timestamp},"${l.event||''}",${l.risk_score||''},${l.peak_score||''},"${l.risk_level||''}","${l.action||l.details||''}",${l.latency_ms||''}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `voiceguard_audit_log_${Date.now()}.csv`;
+            a.click();
+        }
+
+        // Policy Configurator
+        async function updatePolicyConfig() {
+            const alpha = document.getElementById('cfgAlpha').value;
+            const low = document.getElementById('cfgLow').value;
+            const mid = document.getElementById('cfgMid').value;
+            const high = document.getElementById('cfgHigh').value;
+
+            document.getElementById('cfgAlphaVal').innerText = alpha;
+            document.getElementById('cfgLowVal').innerText = low + '.0%';
+            document.getElementById('cfgMidVal').innerText = mid + '.0%';
+            document.getElementById('cfgHighVal').innerText = high + '.0%';
+
+            await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ewma_alpha: parseFloat(alpha),
+                    threshold_low_risk: parseFloat(low),
+                    threshold_mid_risk: parseFloat(mid),
+                    threshold_high_risk: parseFloat(high)
+                })
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initWebSocket();
+        });
+    </script>
+</body>
+</html>

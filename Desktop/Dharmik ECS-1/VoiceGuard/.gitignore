@@ -1,0 +1,29 @@
+# Python bytecode / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Pytest / Virtual Environments
+.pytest_cache/
+.venv/
+venv/
+ENV/
+env/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary patch scripts
+build_html.py
+gen.py
+write_html.py
+_do_patch_dashboard.py
+context*.txt
