@@ -4,14 +4,17 @@ from typing import Dict, Any, Optional
 try:
     from .config import config
     from .ml_classifier import MLVoiceClassifier
+    from .dsp_pipeline import DSPPipeline
 except ImportError:
     from config import config
     from ml_classifier import MLVoiceClassifier
+    from dsp_pipeline import DSPPipeline
 
 class DualLayerDetector:
     def __init__(self, sample_rate: int = 16000, ml_classifier: Optional[MLVoiceClassifier] = None):
         self.sample_rate = sample_rate
         self.ml_classifier = ml_classifier if ml_classifier is not None else MLVoiceClassifier()
+        self.dsp = DSPPipeline()
 
     def analyze_acoustic_branch(self, audio: np.ndarray) -> Dict[str, Any]:
         _zero = {
@@ -19,7 +22,9 @@ class DualLayerDetector:
             'spectral_flatness': 0.0, 
             'spectral_rolloff_hz': 0.0, 
             'phase_discontinuity_var': 0.0,
-            '_sub_scores': {'phase_discontinuity': 0.0, 'spectral_flatness': 0.0, 'rolloff': 0.0}
+            't60_decay_sec': 0.0,
+            'replay_decay_score': 0.0,
+            '_sub_scores': {'phase_discontinuity': 0.0, 'spectral_flatness': 0.0, 'rolloff': 0.0, 'replay_decay': 0.0}
         }
         vad_thresh = config.audio.vad_threshold_rms
         rms = float(np.sqrt(np.mean(audio**2)))
@@ -59,6 +64,31 @@ class DualLayerDetector:
         valid_diffs = phase_diff[mask[:, :-1]] if mask.shape[1] > 1 else np.array([])
         phase_discontinuity = float(np.var(np.angle(np.exp(1j * valid_diffs)))) if valid_diffs.size > 0 else 0.0
 
+        # ── T60 High-Frequency Energy Decay (Replay Attack Detector) ───────────────────
+        # Approximates room impulse response decay time in 4kHz-8kHz band
+        hf_mask = freqs >= 4000.0
+        if np.any(hf_mask) and stft_mag.shape[1] > 2:
+            hf_energy = np.mean(stft_mag[hf_mask, :], axis=0)
+            peak_idx = np.argmax(hf_energy)
+            decay_energy = hf_energy[peak_idx:]
+            if len(decay_energy) > 2 and decay_energy[0] > 1e-5:
+                # Time to drop by 60dB approximated from initial decay slope
+                energy_ratio = decay_energy / (decay_energy[0] + 1e-9)
+                decay_rate = float(-np.mean(np.diff(np.log(energy_ratio + 1e-6))))
+                t60_estimate = float(np.clip(0.05 / (decay_rate + 1e-6), 0.05, 1.5))
+            else:
+                t60_estimate = 0.15
+        else:
+            t60_estimate = 0.15
+
+        # Replay attack score: excessive reverberation decay (T60 > 0.6s) or sharp unnatural decay (<0.08s)
+        if t60_estimate > 0.60:
+            replay_score = min(1.0, (t60_estimate - 0.60) / 0.60)
+        elif t60_estimate < 0.08:
+            replay_score = min(1.0, (0.08 - t60_estimate) / 0.08)
+        else:
+            replay_score = 0.0
+
         flatness_score = 0.0 if spectral_flatness < 0.025 else min(1.0, (spectral_flatness - 0.025) / 0.06)
         phase_score = 0.0 if phase_discontinuity < 2.0 else min(1.0, (phase_discontinuity - 2.0) / 3.0)
 
@@ -69,16 +99,19 @@ class DualLayerDetector:
         else:
             rolloff_score = 0.0
 
-        acoustic_score = float(np.clip(0.50 * phase_score + 0.35 * flatness_score + 0.15 * rolloff_score, 0.0, 1.0))
+        acoustic_score = float(np.clip(0.40 * phase_score + 0.30 * flatness_score + 0.15 * rolloff_score + 0.15 * replay_score, 0.0, 1.0))
         return {
             'acoustic_score': round(acoustic_score * 100.0, 2),
             'spectral_flatness': round(spectral_flatness, 6),
             'spectral_rolloff_hz': round(rolloff, 2),
             'phase_discontinuity_var': round(phase_discontinuity, 6),
+            't60_decay_sec': round(t60_estimate, 4),
+            'replay_decay_score': round(float(replay_score * 100.0), 2),
             '_sub_scores': {
                 'phase_discontinuity': round(float(phase_score), 4),
                 'spectral_flatness': round(float(flatness_score), 4),
-                'rolloff': round(float(rolloff_score), 4)
+                'rolloff': round(float(rolloff_score), 4),
+                'replay_decay': round(float(replay_score), 4)
             }
         }
 
@@ -177,24 +210,40 @@ class DualLayerDetector:
         }
 
     def process_window(self, audio_window: np.ndarray) -> Dict[str, Any]:
-        acoustic_res = self.analyze_acoustic_branch(audio_window)
-        prosodic_res = self.analyze_prosodic_branch(audio_window)
-        ml_score = self.ml_classifier.predict_frame(audio_window, sample_rate=self.sample_rate)
+        # 1. Feature Squeezing / Input Sanitization to strip adversarial perturbations
+        sanitized_window = self.dsp.sanitize_input(audio_window)
+        
+        # 2. SNR & Channel Estimation for Adaptive Score Fusion
+        snr_db = self.dsp.estimate_snr(audio_window)
+        
+        # Adaptive Weights Assignment
+        if snr_db < 15.0 or self.sample_rate < 16000:
+            # Degradation / Lossy Telephony mode: rely heavily on robust LFCC/DSP features
+            w_ml, w_ac, w_pr = 0.40, 0.30, 0.30
+            fusion_mode = "ADAPTIVE_DSP_HEAVY"
+        else:
+            # Clean High-Fidelity Channel mode
+            w_ml, w_ac, w_pr = 0.60, 0.20, 0.20
+            fusion_mode = "STANDARD_ML_HEAVY"
+
+        acoustic_res = self.analyze_acoustic_branch(sanitized_window)
+        prosodic_res = self.analyze_prosodic_branch(sanitized_window)
+        ml_score = self.ml_classifier.predict_frame(sanitized_window, sample_rate=self.sample_rate)
 
         ac_score = acoustic_res['acoustic_score']
         pr_score = prosodic_res['prosodic_score']
 
-        # 60% ML, 20% Acoustic DSP, 20% Prosodic DSP weighted score fusion
-        raw_frame_score = round(0.60 * ml_score + 0.20 * ac_score + 0.20 * pr_score, 2)
+        # Dynamic Weighted Score Fusion
+        raw_frame_score = round(w_ml * ml_score + w_ac * ac_score + w_pr * pr_score, 2)
 
-        ac_subs = acoustic_res.get('_sub_scores', {'phase_discontinuity': 0.0, 'spectral_flatness': 0.0, 'rolloff': 0.0})
+        ac_subs = acoustic_res.get('_sub_scores', {'phase_discontinuity': 0.0, 'spectral_flatness': 0.0, 'rolloff': 0.0, 'replay_decay': 0.0})
         pr_subs = prosodic_res.get('_sub_scores', {'flat_pitch': 0.0, 'jitter': 0.0, 'shimmer': 0.0})
 
         weighted_factors = {
-            'ml.neural_vocoder_prob': round(ml_score * 0.60 / 100.0, 4),
-            'acoustic.phase_discontinuity': round(ac_subs['phase_discontinuity'] * 0.20, 4),
-            'acoustic.spectral_flatness': round(ac_subs['spectral_flatness'] * 0.20 * 0.35, 4),
-            'prosodic.flat_pitch': round(pr_subs['flat_pitch'] * 0.20 * 0.60, 4)
+            'ml.neural_vocoder_prob': round(ml_score * w_ml / 100.0, 4),
+            'acoustic.phase_discontinuity': round(ac_subs['phase_discontinuity'] * w_ac, 4),
+            'acoustic.spectral_flatness': round(ac_subs['spectral_flatness'] * w_ac * 0.35, 4),
+            'prosodic.flat_pitch': round(pr_subs['flat_pitch'] * w_pr * 0.60, 4)
         }
         max_val = max(weighted_factors.values()) if weighted_factors else 0.0
         dominant_signal = max(weighted_factors, key=weighted_factors.get) if max_val > 0.01 else "none"
@@ -203,12 +252,17 @@ class DualLayerDetector:
             'ml_score': ml_score,
             'acoustic': ac_subs,
             'prosodic': pr_subs,
+            'snr_db': round(snr_db, 2),
+            'fusion_mode': fusion_mode,
+            'weights': {'ml': w_ml, 'acoustic': w_ac, 'prosodic': w_pr},
             'dominant_signal': dominant_signal
         }
 
         return {
             'raw_frame_score': raw_frame_score,
             'ml_score': ml_score,
+            'snr_db': round(snr_db, 2),
+            'fusion_mode': fusion_mode,
             'acoustic': {k: v for k, v in acoustic_res.items() if k != '_sub_scores'},
             'prosodic': {k: v for k, v in prosodic_res.items() if k != '_sub_scores'},
             'contributing_factors': contributing_factors

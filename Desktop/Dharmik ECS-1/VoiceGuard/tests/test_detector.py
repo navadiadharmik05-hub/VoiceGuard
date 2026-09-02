@@ -262,7 +262,8 @@ class TestProcessWindow:
         """raw_frame_score must equal 0.5 * acoustic + 0.5 * prosodic (within tolerance)."""
         sig = make_fm_tone(amplitude=0.40)
         result = det.process_window(sig)
-        expected = 0.60 * result['ml_score'] + 0.20 * result['acoustic']['acoustic_score'] + 0.20 * result['prosodic']['prosodic_score']
+        w = result['contributing_factors']['weights']
+        expected = w['ml'] * result['ml_score'] + w['acoustic'] * result['acoustic']['acoustic_score'] + w['prosodic'] * result['prosodic']['prosodic_score']
         assert result['raw_frame_score'] == pytest.approx(expected, abs=1e-2)
 
     def test_silence_raw_score_is_zero(self, det):
