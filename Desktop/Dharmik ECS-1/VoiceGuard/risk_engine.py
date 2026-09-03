@@ -18,6 +18,8 @@ class DynamicRiskEngine:
         self.history_limit = config.risk.buffer_history_size
         self._silence_frames = 0
         self._speech_frame_count = 0
+        self._pending_peak_score = 0.0
+        self._pending_peak_count = 0
         
         self.buf_100ms: List[float] = []
         self.buf_500ms: List[float] = []
@@ -32,6 +34,8 @@ class DynamicRiskEngine:
 
     def update_risk(self, raw_frame_score: float, is_speech: bool) -> Dict[str, Any]:
         if not is_speech:
+            self._pending_peak_score = 0.0
+            self._pending_peak_count = 0
             self._silence_frames += 1
             if self.peak_score >= 65.0 and self._silence_frames < 15:
                 self.smoothed_score *= 0.98
@@ -50,8 +54,20 @@ class DynamicRiskEngine:
             self.smoothed_score = alpha * raw_frame_score + (1.0 - alpha) * self.smoothed_score
             
             self.speech_scores.append(self.smoothed_score)
-            if self.smoothed_score > self.peak_score:
-                self.peak_score = self.smoothed_score
+            if raw_frame_score > self.peak_score:
+                if self._pending_peak_count > 0 and abs(raw_frame_score - self._pending_peak_score) <= 10.0:
+                    self._pending_peak_count += 1
+                    self._pending_peak_score = max(self._pending_peak_score, raw_frame_score)
+                else:
+                    self._pending_peak_score = raw_frame_score
+                    self._pending_peak_count = 1
+                
+                req_frames = 2 if self._pending_peak_score >= 85.0 else 3
+                if self._pending_peak_count >= req_frames:
+                    self.peak_score = max(self.peak_score, self._pending_peak_score)
+            else:
+                self._pending_peak_score = 0.0
+                self._pending_peak_count = 0
 
         score_val = float(self.smoothed_score if is_speech or self._silence_frames < 15 else 0.0)
         self.buf_100ms.append(score_val)
@@ -110,6 +126,8 @@ class DynamicRiskEngine:
         }
 
     def get_summary(self) -> Dict[str, Any]:
+        if self._pending_peak_count >= 1 and self._pending_peak_score > self.peak_score:
+            self.peak_score = self._pending_peak_score
         peak = float(self.peak_score)
         avg = float(sum(self.speech_scores) / len(self.speech_scores)) if self.speech_scores else 0.0
         final = float(self.smoothed_score)
@@ -124,6 +142,8 @@ class DynamicRiskEngine:
         self.peak_score = 0.0
         self._silence_frames = 0
         self._speech_frame_count = 0
+        self._pending_peak_score = 0.0
+        self._pending_peak_count = 0
         self.speech_scores.clear()
         self.history.clear()
         self.buf_100ms.clear()

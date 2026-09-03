@@ -304,3 +304,12 @@ class TestReset:
         assert s['peak_risk_score'] == 0.0
         assert s['avg_speech_risk'] == 0.0
         assert s['final_risk_score'] == 0.0
+
+
+def test_single_speech_frame_microburst_registers_peak():
+    from risk_engine import DynamicRiskEngine
+    eng = DynamicRiskEngine()
+    eng.update_risk(80.0, True)
+    summary = eng.get_summary()
+    assert summary['peak_risk_score'] > 0.0
+    assert summary['peak_risk_score'] == 80.0

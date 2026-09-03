@@ -40,7 +40,8 @@ def append_audit_log(entry: Dict[str, Any]):
 _SILENCE_DETECTION: Dict[str, Any] = {
     "raw_frame_score": 0.0,
     "ml_score": 0.0,
-    "raw_frame_score": 0.0,
+    "snr_db": 0.0,
+    "fusion_mode": "SILENCE",
     "acoustic": {
         "acoustic_score": 0.0,
         "spectral_flatness": 0.0,
@@ -55,6 +56,7 @@ _SILENCE_DETECTION: Dict[str, Any] = {
         "shimmer": 0.0
     },
     "contributing_factors": {
+        "weights": {"ml": 0.0, "acoustic": 0.0, "prosodic": 0.0},
         "acoustic": {"phase_discontinuity": 0.0, "spectral_flatness": 0.0, "rolloff": 0.0},
         "prosodic": {"flat_pitch": 0.0, "jitter": 0.0, "shimmer": 0.0},
         "dominant_signal": "none"
@@ -104,7 +106,6 @@ async def clear_audit_logs():
     audit_logs_history.clear()
     return {"status": "cleared"}
 
-@app.post("/api/analyze-file")
 @app.post("/api/analyze-file")
 async def analyze_audio_file(file: UploadFile = File(...)):
     try:

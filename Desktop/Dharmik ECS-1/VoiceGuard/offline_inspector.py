@@ -1,5 +1,6 @@
 import os
 import io
+import math
 import numpy as np
 import soundfile as sf
 from typing import Dict, Any, List, Optional
@@ -24,25 +25,44 @@ def inspect_file(file_input: Any, detector: Optional[DualLayerDetector] = None) 
     """
     target_sr = config.audio.sample_rate  # 16000
     
-    # 1. Load Audio Data
-    if isinstance(file_input, (str, os.PathLike)):
-        data, sr = sf.read(file_input, dtype='float32')
-    elif isinstance(file_input, bytes):
-        data, sr = sf.read(io.BytesIO(file_input), dtype='float32')
-    elif hasattr(file_input, 'read'):
-        data, sr = sf.read(file_input, dtype='float32')
-    else:
+    # 1. Load Audio Data (with robust fallback to librosa for .m4a / .aac / web streams)
+    data, sr = None, None
+    try:
+        if isinstance(file_input, (str, os.PathLike)):
+            data, sr = sf.read(file_input, dtype='float32')
+        elif isinstance(file_input, bytes):
+            data, sr = sf.read(io.BytesIO(file_input), dtype='float32')
+        elif hasattr(file_input, 'read'):
+            data, sr = sf.read(file_input, dtype='float32')
+        elif isinstance(file_input, np.ndarray):
+            data, sr = file_input.astype(np.float32), target_sr
+    except Exception as sf_err:
+        try:
+            import librosa
+            if isinstance(file_input, bytes):
+                data, sr = librosa.load(io.BytesIO(file_input), sr=None, mono=False)
+            else:
+                data, sr = librosa.load(file_input, sr=None, mono=False)
+            data = data.T if data.ndim > 1 else data
+        except Exception as lib_err:
+            raise ValueError(f"Audio decoding failed across all backends: sf({sf_err}), librosa({lib_err})")
+            
+    if data is None or sr is None:
         raise ValueError(f"Unsupported file input type: {type(file_input)}")
         
     # Downmix multi-channel to mono
     if data.ndim > 1:
         data = np.mean(data, axis=1)
         
-    # Resample to 16kHz if needed
+    # Resample to 16kHz if needed (using librosa/resample_poly for high-fidelity phase preservation)
     if sr != target_sr:
-        import scipy.signal as signal
-        num_samples = int(len(data) * target_sr / sr)
-        data = signal.resample(data, num_samples).astype(np.float32)
+        try:
+            import librosa
+            data = librosa.resample(y=data, orig_sr=sr, target_sr=target_sr).astype(np.float32)
+        except Exception:
+            import scipy.signal as signal
+            g = math.gcd(target_sr, sr)
+            data = signal.resample_poly(data, target_sr // g, sr // g).astype(np.float32)
         
     # Peak normalize audio gain
     max_peak = float(np.max(np.abs(data)))
@@ -66,7 +86,7 @@ def inspect_file(file_input: Any, detector: Optional[DualLayerDetector] = None) 
             continue
             
         rms = float(np.sqrt(np.mean(np.square(window))))
-        is_speech = rms >= config.audio.vad_threshold_rms
+        is_speech = (rms >= 0.005) # Dynamic VAD threshold for offline inspector
         
         det_res = detector.process_window(window) if is_speech else {
             "raw_frame_score": 0.0,
@@ -99,8 +119,16 @@ def inspect_file(file_input: Any, detector: Optional[DualLayerDetector] = None) 
     peak_risk = summary["peak_risk_score"]
     avg_speech_risk = round(float(np.mean(speech_scores)), 2) if speech_scores else 0.0
     
-    # Overall deepfake risk evaluation combines peak risk and speech average
-    overall_deepfake_risk = round(0.60 * peak_risk + 0.40 * avg_speech_risk, 2) if speech_scores else round(peak_risk, 2)
+    if speech_scores:
+        sorted_speech = sorted(speech_scores, reverse=True)
+        n_speech = len(sorted_speech)
+        k = min(n_speech, max(3, math.ceil(0.20 * n_speech)))
+        sustained_peak_risk = float(np.mean(sorted_speech[:k]))
+    else:
+        sustained_peak_risk = 0.0
+
+    sustained_peak_risk = round(sustained_peak_risk, 2)
+    overall_deepfake_risk = round(0.5 * peak_risk + 0.5 * sustained_peak_risk, 2)
     
     if overall_deepfake_risk < config.risk.threshold_low_risk:
         verdict, color = "ALLOW", "#10B981"
@@ -116,6 +144,7 @@ def inspect_file(file_input: Any, detector: Optional[DualLayerDetector] = None) 
         "overall_risk_score": overall_deepfake_risk,
         "peak_risk": peak_risk,
         "peak_risk_score": peak_risk,
+        "sustained_peak_risk": sustained_peak_risk,
         "avg_speech_risk": avg_speech_risk,
         "final_risk_score": summary["final_risk_score"],
         "verdict": verdict,

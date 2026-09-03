@@ -1,7 +1,12 @@
 import os
 import numpy as np
-import torch
 from typing import Dict, Any, Optional, Union
+
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
 
 try:
     import librosa
@@ -15,7 +20,6 @@ try:
 except ImportError:
     HAS_TRANSFORMERS = False
 
-# Model candidate fallbacks
 PRETRAINED_MODEL_CANDIDATES = [
     "mo-thecreator/Deepfake-audio-detection",
     "Siham/wav2vec2-base-deepfake-audio-detection",
@@ -23,11 +27,6 @@ PRETRAINED_MODEL_CANDIDATES = [
 ]
 
 class MLVoiceClassifier:
-    """
-    Singleton Pre-trained Deepfake Audio Detection Classifier.
-    Integrates Hugging Face transformers audio-classification pipeline for Wav2Vec2/WavLM models.
-    Instantiated ONCE on server startup.
-    """
     _instance: Optional["MLVoiceClassifier"] = None
 
     def __new__(cls, *args, **kwargs):
@@ -39,18 +38,27 @@ class MLVoiceClassifier:
         if getattr(self, "_initialized", False):
             return
             
-        self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
+        if HAS_TORCH:
+            self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = "cpu"
+            
         self.model_name = model_name
         self.feature_extractor = None
         self.model = None
         self.is_loaded = False
+        self.fake_label_idx = 1  # Default fallback
         self._initialized = True
         
         self._load_pretrained_model()
 
     def _load_pretrained_model(self):
+        if not HAS_TORCH:
+            print("[MLVoiceClassifier] Warning: PyTorch (`torch`) is not installed. Neural ML scoring disabled; operating in DSP feature fallback mode.")
+            return
+            
         if not HAS_TRANSFORMERS:
-            print("[MLVoiceClassifier] HuggingFace transformers not installed. Operating in Hybrid DSP mode.")
+            print("[MLVoiceClassifier] Warning: HuggingFace transformers not installed. Operating in Hybrid DSP mode.")
             return
             
         candidates = [self.model_name] + [m for m in PRETRAINED_MODEL_CANDIDATES if m != self.model_name]
@@ -62,7 +70,16 @@ class MLVoiceClassifier:
                 self.model.eval()
                 self.is_loaded = True
                 self.model_name = model_id
-                print(f"[MLVoiceClassifier] HuggingFace model '{model_id}' loaded successfully on {self.device}!")
+                
+                # Dynamic Label Alignment
+                id2label = getattr(self.model.config, "id2label", {})
+                self.fake_label_idx = 1
+                for idx, label in id2label.items():
+                    if "fake" in str(label).lower() or "spoof" in str(label).lower() or "synthetic" in str(label).lower():
+                        self.fake_label_idx = int(idx)
+                        break
+                        
+                print(f"[MLVoiceClassifier] HuggingFace model '{model_id}' loaded (Fake Class Index: {self.fake_label_idx})!")
                 break
             except Exception as e:
                 print(f"[MLVoiceClassifier] Could not load model '{model_id}': {e}")
@@ -71,9 +88,6 @@ class MLVoiceClassifier:
             print("[MLVoiceClassifier] Operating in robust hybrid feature fallback mode.")
 
     def preprocess_audio(self, audio_input: Union[np.ndarray, str, bytes], sample_rate: int = 16000) -> np.ndarray:
-        """
-        Fast audio array/file preprocessing. Converts bytes, filepaths, or numpy arrays to 16kHz float32.
-        """
         if isinstance(audio_input, str):
             if HAS_LIBROSA:
                 y, _ = librosa.load(audio_input, sr=sample_rate, mono=True)
@@ -88,11 +102,6 @@ class MLVoiceClassifier:
         return arr
 
     def predict_frame(self, audio_input: Union[np.ndarray, str, bytes], sample_rate: int = 16000) -> float:
-        """
-        Evaluates raw in-memory audio buffers or file paths.
-        Returns normalized synthetic deepfake probability score in [0.0, 100.0]%.
-        Features robust fallback returning 50.0% neutral score on error.
-        """
         try:
             audio = self.preprocess_audio(audio_input, sample_rate)
             if audio is None or len(audio) < 256:
@@ -102,8 +111,7 @@ class MLVoiceClassifier:
             if rms < 0.012:
                 return 0.0
 
-            # 1. HuggingFace Model Inference if available
-            if self.is_loaded and self.model is not None and self.feature_extractor is not None:
+            if HAS_TORCH and self.is_loaded and self.model is not None and self.feature_extractor is not None:
                 try:
                     inputs = self.feature_extractor(
                         audio, 
@@ -115,17 +123,14 @@ class MLVoiceClassifier:
                     with torch.no_grad():
                         logits = self.model(**inputs).logits
                         probs = torch.softmax(logits, dim=-1).squeeze(0).cpu().numpy()
-                        # Class index mapping (fake probability)
-                        fake_prob = float(probs[1]) if len(probs) > 1 else float(probs[0])
+                        fake_prob = float(probs[self.fake_label_idx]) if self.fake_label_idx < len(probs) else float(probs[0])
                         return round(fake_prob * 100.0, 2)
                 except Exception as e:
                     print(f"[MLVoiceClassifier] Inference warning: {e}")
-                    # Fallback to feature engine below
 
-            # 2. Fast Acoustic Feature Heuristic Classifier
             return self._feature_based_ml_score(audio, sample_rate)
         except Exception as err:
-            print(f"[MLVoiceClassifier] Error encountered: {err}. Returning neutral fallback 50.0%")
+            print(f"[MLVoiceClassifier] Error: {err}. Neutral fallback 50.0%")
             return 50.0
 
     def _feature_based_ml_score(self, audio: np.ndarray, sample_rate: int) -> float:

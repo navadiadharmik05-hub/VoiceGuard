@@ -210,25 +210,27 @@ class DualLayerDetector:
         }
 
     def process_window(self, audio_window: np.ndarray) -> Dict[str, Any]:
-        # 1. Feature Squeezing / Input Sanitization to strip adversarial perturbations
+        # 1. Feature Squeezing for Acoustic DSP Branch
         sanitized_window = self.dsp.sanitize_input(audio_window)
         
         # 2. SNR & Channel Estimation for Adaptive Score Fusion
         snr_db = self.dsp.estimate_snr(audio_window)
         
+        # Pristine Raw Audio is passed directly to the ML Classifier to preserve neural vocoder features
+        ml_score = self.ml_classifier.predict_frame(audio_window, sample_rate=self.sample_rate)
+        acoustic_res = self.analyze_acoustic_branch(sanitized_window)
+        prosodic_res = self.analyze_prosodic_branch(sanitized_window)
+
         # Adaptive Weights Assignment
-        if snr_db < 15.0 or self.sample_rate < 16000:
-            # Degradation / Lossy Telephony mode: rely heavily on robust LFCC/DSP features
+        if ml_score >= 70.0:
+            w_ml, w_ac, w_pr = 0.70, 0.15, 0.15
+            fusion_mode = "ML_DOMINANT_NEURAL_ALERT"
+        elif snr_db < 15.0 or self.sample_rate < 16000:
             w_ml, w_ac, w_pr = 0.40, 0.30, 0.30
             fusion_mode = "ADAPTIVE_DSP_HEAVY"
         else:
-            # Clean High-Fidelity Channel mode
             w_ml, w_ac, w_pr = 0.60, 0.20, 0.20
             fusion_mode = "STANDARD_ML_HEAVY"
-
-        acoustic_res = self.analyze_acoustic_branch(sanitized_window)
-        prosodic_res = self.analyze_prosodic_branch(sanitized_window)
-        ml_score = self.ml_classifier.predict_frame(sanitized_window, sample_rate=self.sample_rate)
 
         ac_score = acoustic_res['acoustic_score']
         pr_score = prosodic_res['prosodic_score']

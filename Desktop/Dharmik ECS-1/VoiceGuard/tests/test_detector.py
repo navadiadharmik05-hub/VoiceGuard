@@ -269,3 +269,49 @@ class TestProcessWindow:
     def test_silence_raw_score_is_zero(self, det):
         result = det.process_window(make_silence())
         assert result['raw_frame_score'] == 0.0
+
+
+# ╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠╠
+# Multi-Benchmark Stress & Evaluation Suite
+# ⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠⅠ
+
+
+
+
+class TestBenchmarkMatrixAndStress:
+    def test_container_and_sample_rate_execution_matrix(self):
+        import io
+        import soundfile as sf
+        from offline_inspector import inspect_file
+        from detector import DualLayerDetector
+        detector = DualLayerDetector()
+        containers = ['wav', 'flac', 'ogg']
+        sample_rates = [8000, 16000, 24000, 44100, 48000]
+        for fmt in containers:
+            for sr in sample_rates:
+                audio = make_human_voice(duration=1.5)
+                buf = io.BytesIO()
+                sf.write(buf, audio, sr, format=fmt)
+                buf.seek(0)
+                raw_bytes = buf.read()
+                res = inspect_file(raw_bytes, detector=detector)
+                assert 'overall_risk_score' in res
+                assert 'verdict' in res
+                assert 0.0 <= res['overall_risk_score'] <= 100.0
+
+    def test_sustained_peak_risk_formula_and_spike_immunity(self):
+        from offline_inspector import inspect_file
+        from detector import DualLayerDetector
+        detector = DualLayerDetector()
+        audio = make_human_voice(duration=2.5)
+        spike_start = int(1.0 * SR)
+        spike_end = spike_start + int(0.05 * SR)
+        audio[spike_start:spike_end] = np.random.uniform(-1.0, 1.0, size=spike_end - spike_start).astype(np.float32) * 0.95
+        res = inspect_file(audio, detector=detector)
+        pr = res['peak_risk']
+        spr = res['sustained_peak_risk']
+        ovr = res['overall_risk_score']
+        verdict = res['verdict']
+        expected_ovr = round(0.5 * pr + 0.5 * spr, 2)
+        assert abs(ovr - expected_ovr) < 1e-4
+        assert verdict in ['ALLOW', 'MONITOR', 'ALLOW_MONITORED']
